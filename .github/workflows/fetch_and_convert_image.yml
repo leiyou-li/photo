@@ -28,6 +28,7 @@ jobs:
         python fetch_and_convert_image.py
 
     - name: Upload converted image
+      if: always()  # 确保即使前面的步骤失败，也会尝试上传
       uses: actions/upload-artifact@v3
       with:
         name: converted-image
