@@ -11,10 +11,10 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: '3.x'
 
@@ -28,7 +28,7 @@ jobs:
         python fetch_and_convert_image.py
 
     - name: Upload converted image
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: converted-image
         path: img.png
