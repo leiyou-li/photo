@@ -1,4 +1,4 @@
-import   进口 requests
+import requests
 from bs4 import BeautifulSoup
 from PIL import Image
 from io import BytesIO
@@ -10,7 +10,7 @@ base_url = "https://pic.netbian.com"
 
 # 抓取网页内容
 def fetch_page_content(url):
-    response = requests.get(url)响应对象 = requests.get   得到(url)
+    response = requests.get(url)
     response.encoding = 'gbk'  # 设置编码为 gbk，因为该网站使用的是 gbk 编码
     return response.text
 
@@ -43,6 +43,5 @@ def main():
     else:
         print("未找到图片 URL")
 
-if __name__ == "__main__":   如果 `__name__` 等于 "__main__"   “__main__”：
+if __name__ == "__main__":
     main()
-
