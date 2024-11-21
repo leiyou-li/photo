@@ -1,0 +1,67 @@
+name   名字: Fetch and Convert Image
+
+on:   :
+  schedule:   日程安排:
+    - cron: '0 */3 * * *'  # 每三小时运行一次
+  workflow_dispatch:
+
+jobs:   工作:
+  fetch_and_convert:
+    runs-on: ubuntu-latest   运行环境：Ubuntu最新版本
+
+    steps:   步骤:
+    - name: Checkout repository名称：检查出仓库
+      uses: actions/checkout@v2   用途：actions/checkout@v2
+
+    - name: Set up Python   - 名称：安装Python
+      uses: actions/setup-python@v2用途：actions/setup-python@v2
+      with:   :
+        python-version: '3.x'   Python 版本：“3.x”
+
+    - name: Install dependencies- 名称：安装依赖项
+      run: |   运行:|
+        python -m pip install --upgrade pip使用Python命令行界面，输入以下命令：
+```
+python -m pip install --upgrade pip使用Python命令行界面，输入以下命令：
+```
+python -m pip install --upgrade pip使用Python命令行界面，输入以下命令：
+```
+python -m pip install --upgrade pip使用Python命令行界面，输入以下命令：
+```
+python -m pip install --upgrade pip使用Python命令行界面，输入以下命令：
+```
+python -m pip install --upgrade pip使用Python命令行界面，输入以下命令：
+```
+python -m pip install --upgrade pip使用Python命令行界面，输入以下命令：
+```
+python -m pip install --upgrade pip使用Python命令行界面，输入以下命令：
+```
+python -m pip install --upgrade pip
+```
+这将安装或升级pip（Python包管理器）。
+```
+这将安装或升级pip（Python包管理器）。
+```
+这将安装或升级pip（Python包管理器）。
+```
+这将安装或升级pip（Python包管理器）。
+```
+这将安装或升级pip（Python包管理器）。
+```
+这将安装或升级pip（Python包管理器）。
+```
+这将安装或升级pip（Python包管理器）。
+```
+这将安装或升级pip（Python包管理器）。
+        pip install requests beautifulsoup4 pillow
+
+    - name: Run fetch and convert script
+      run: |   运行:|
+        python fetch_and_convert_image.py
+
+    - name: Upload converted image
+      uses: actions/upload-artifact@v2
+      with:   :
+        name: converted-image
+        path: img.png
+
