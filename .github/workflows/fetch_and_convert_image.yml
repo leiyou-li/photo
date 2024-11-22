@@ -2,34 +2,34 @@ name: Fetch and Convert Image
 
 on:
   schedule:
-    - cron: '0 */3 * * *'  # 每三小时运行一次
-  workflow_dispatch:
+    - cron: '0 */6 * * *'  # 每6小时运行一次
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
-  fetch_and_convert:
+  fetch-and-convert:
     runs-on: ubuntu-latest
-
+    
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
-
+      uses: actions/checkout@v2
+      
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v2
       with:
         python-version: '3.x'
-
+        
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install requests beautifulsoup4 pillow
-
-    - name: Run fetch and convert script
+        pip install requests beautifulsoup4 Pillow
+        
+    - name: Run image fetcher
+      run: python fetch_and_convert_image.py
+        
+    - name: Commit and push if changed
       run: |
-        python fetch_and_convert_image.py
-
-    - name: Upload converted image
-      if: always()  # 确保即使前面的步骤失败，也会尝试上传
-      uses: actions/upload-artifact@v3
-      with:
-        name: converted-image
-        path: img.png
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add img.png
+        git commit -m "Update wallpaper" || exit 0
+        git push
