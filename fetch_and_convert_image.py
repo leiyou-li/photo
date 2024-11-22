@@ -158,11 +158,8 @@ def download_and_convert_image(image_url, site_key='netbian'):
         image_data = BytesIO(response.content)
         image = Image.open(image_data)
         
-        # 生成文件名
-        timestamp = int(time.time())
-        filename = f"wallpaper_{site_key}_{timestamp}.png"
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        png_path = os.path.join(script_dir, filename)
+        # 修改为固定的文件名和路径
+        png_path = "img.png"  # 直接保存在根目录下
         
         image.save(png_path, "PNG")
         print(f"图片已成功保存为: {png_path}")
