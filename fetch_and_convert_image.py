@@ -21,6 +21,11 @@ SITES = {
         'base_url': "https://www.toopic.cn",
         'referer': "https://www.toopic.cn/4kbz/",
         'encoding': 'utf-8'
+    },
+    '3gbizhi': {
+        'base_url': "https://desk.3gbizhi.com",
+        'referer': "https://desk.3gbizhi.com/",
+        'encoding': 'utf-8'
     }
 }
 
@@ -38,6 +43,11 @@ def get_headers(site_key='netbian'):
     if site_key == 'toopic':
         base_headers.update({
             'Host': 'www.toopic.cn',
+            'Referer': SITES[site_key]['referer']
+        })
+    elif site_key == '3gbizhi':
+        base_headers.update({
+            'Host': 'desk.3gbizhi.com',
             'Referer': SITES[site_key]['referer']
         })
     
@@ -138,6 +148,49 @@ def extract_image_urls_toopic(page_content):
         print("错误详情:", str(e))
         return []
 
+def extract_image_urls_3gbizhi(page_content):
+    if not page_content:
+        return []
+    
+    try:
+        soup = BeautifulSoup(page_content, 'html.parser')
+        image_urls = []
+        
+        # 打印页面结构以进行调试
+        print("\n页面结构预览:")
+        print(soup.prettify()[:1000])
+        
+        # 查找所有图片容器
+        img_containers = soup.find_all('div', class_='item')
+        for container in img_containers:
+            # 查找图片链接
+            img = container.find('img')
+            if img:
+                src = img.get('data-original') or img.get('src')  # 先尝试 data-original 属性
+                if src:
+                    if not src.startswith('http'):
+                        src = SITES['3gbizhi']['base_url'] + src
+                    image_urls.append(src)
+                    print(f"找到图片URL: {src}")
+        
+        # 查找所有图片标签
+        all_images = soup.find_all('img')
+        for img in all_images:
+            src = img.get('data-original') or img.get('src')
+            if src and any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                if not src.startswith('http'):
+                    src = SITES['3gbizhi']['base_url'] + src
+                if src not in image_urls:
+                    image_urls.append(src)
+                    print(f"找到图片URL: {src}")
+        
+        print(f"\n总共找到 {len(image_urls)} 张图片")
+        return image_urls
+    except Exception as e:
+        print(f"解析页面失败: {e}")
+        print("错误详情:", str(e))
+        return []
+
 def download_and_convert_image(image_url, site_key='netbian'):
     headers = get_headers(site_key)
     headers.update({
@@ -184,6 +237,16 @@ def main():
             f"{SITES['toopic']['base_url']}/4kbz/index_2.html"
         ]
         
+        # 添加更多的 3gbizhi.com 入口页面
+        bizhi_urls = [
+            f"{SITES['3gbizhi']['base_url']}/4kmeinv/",
+            f"{SITES['3gbizhi']['base_url']}/4kfengjing/",
+            f"{SITES['3gbizhi']['base_url']}/4kyouxi/",
+            f"{SITES['3gbizhi']['base_url']}/4kdongman/",
+            f"{SITES['3gbizhi']['base_url']}/4kyingshi/",
+            f"{SITES['3gbizhi']['base_url']}/4kmingxing/"
+        ]
+        
         for url in toopic_urls:
             print(f"\n尝试访问 toopic.cn: {url}")
             page_content = fetch_page_content(url, 'toopic')
@@ -203,6 +266,32 @@ def main():
                 random_image_url = random.choice(image_urls)
                 print(f"随机选择的图片URL: {random_image_url}")
                 download_and_convert_image(random_image_url, 'toopic')
+                break
+            else:
+                print("未找到图片 URL，尝试下一个URL")
+                time.sleep(2)  # 添加延迟
+        else:
+            print("所有URL都尝试失败")
+        
+        for url in bizhi_urls:
+            print(f"\n尝试访问 3gbizhi.com: {url}")
+            page_content = fetch_page_content(url, '3gbizhi')
+            
+            if not page_content:
+                print("获取页面内容失败，尝试下一个URL")
+                time.sleep(2)  # 添加延迟
+                continue
+            
+            # 打印页面内容预览以便调试
+            print("\n页面内容预览:")
+            print(page_content[:500])
+                
+            image_urls = extract_image_urls_3gbizhi(page_content)
+            
+            if image_urls:
+                random_image_url = random.choice(image_urls)
+                print(f"随机选择的图片URL: {random_image_url}")
+                download_and_convert_image(random_image_url, '3gbizhi')
                 break
             else:
                 print("未找到图片 URL，尝试下一个URL")
