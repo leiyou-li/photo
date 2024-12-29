@@ -7,7 +7,7 @@ import time
 import urllib3
 from typing import List, Optional, Dict
 import logging
-from bs4 import BeautifulSoup
+import json  # 替换 bs4，使用内置的 json 模块
 
 # 配置日志
 logging.basicConfig(
