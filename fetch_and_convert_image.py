@@ -109,7 +109,7 @@ def validate_image(image: Image.Image) -> bool:
     min_height = 1080
     min_ratio = 1.5
     max_ratio = 2.5
-    min_size_mb = 0.2
+    target_size_mb = 0.5  # 目标文件大小为 500KB
     
     try:
         # 检查图片模式
@@ -130,22 +130,13 @@ def validate_image(image: Image.Image) -> bool:
             logger.info(f"图片宽高比不合适: {ratio:.2f}, 需要在 {min_ratio} 到 {max_ratio} 之间")
             return False
         
-        # 检查图片质量
-        image_bytes = BytesIO()
-        image.save(image_bytes, format='PNG', optimize=True, quality=95)
-        size_mb = len(image_bytes.getvalue()) / (1024 * 1024)
+        # 调整图片大小到合适的分辨率
+        target_width = 1920
+        target_height = int(target_width / ratio)
+        if width > target_width:
+            logger.info(f"调整图片大小到 {target_width}x{target_height}")
+            image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
         
-        if size_mb < min_size_mb:
-            logger.info(f"图片文件太小: {size_mb:.1f}MB, 需要至少 {min_size_mb}MB")
-            return False
-        
-        # 检查图片是否过度压缩
-        if size_mb > 10:  # 如果文件大于10MB，可能是未压缩的原图
-            logger.info("图片文件过大，尝试优化...")
-            image.save(image_bytes, format='PNG', optimize=True, quality=85)
-            size_mb = len(image_bytes.getvalue()) / (1024 * 1024)
-        
-        logger.info(f"图片验证通过: {width}x{height}, 比例 {ratio:.2f}, 大小 {size_mb:.1f}MB")
         return True
         
     except Exception as e:
@@ -163,17 +154,28 @@ def download_and_convert_image(image_url: str) -> bool:
         response.raise_for_status()
         
         image = Image.open(BytesIO(response.content))
-        logger.info(f"图片尺寸: {image.size}")
+        logger.info(f"原始图片尺寸: {image.size}")
         
         if not validate_image(image):
             return False
             
-        png_path = "img.png"
-        image.save(png_path, "PNG", optimize=True)
+        # 保存为 JPEG 格式，使用适当的压缩
+        jpg_path = "img.jpg"
+        image.save(jpg_path, "JPEG", quality=85, optimize=True)
         
-        if os.path.exists(png_path) and os.path.getsize(png_path) > 0:
-            size_kb = os.path.getsize(png_path) / 1024
-            logger.info(f"图片已成功保存: {png_path} ({size_kb:.1f}KB)")
+        if os.path.exists(jpg_path) and os.path.getsize(jpg_path) > 0:
+            size_kb = os.path.getsize(jpg_path) / 1024
+            logger.info(f"图片已成功保存: {jpg_path} ({size_kb:.1f}KB)")
+            
+            # 如果文件仍然太大，继续压缩
+            if size_kb > 500:  # 如果大于 500KB
+                quality = 85
+                while size_kb > 500 and quality > 60:
+                    quality -= 5
+                    image.save(jpg_path, "JPEG", quality=quality, optimize=True)
+                    size_kb = os.path.getsize(jpg_path) / 1024
+                    logger.info(f"重新压缩图片 (quality={quality}): {size_kb:.1f}KB")
+            
             return True
             
         return False
