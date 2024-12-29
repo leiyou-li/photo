@@ -1,306 +1,205 @@
 import requests
-from bs4 import BeautifulSoup
 from PIL import Image
 from io import BytesIO
 import random
 import os
 import time
 import urllib3
+from typing import List, Optional, Dict
+import logging
+from bs4 import BeautifulSoup
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # 禁用 SSL 警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 支持的网站配置
-SITES = {
-    'netbian': {
-        'base_url': "https://pic.netbian.com",
-        'referer': "https://pic.netbian.com/",
-        'encoding': 'gbk'
-    },
-    'toopic': {
-        'base_url': "https://www.toopic.cn",
-        'referer': "https://www.toopic.cn/4kbz/",
-        'encoding': 'utf-8'
-    },
-    '3gbizhi': {
-        'base_url': "https://desk.3gbizhi.com",
-        'referer': "https://desk.3gbizhi.com/",
-        'encoding': 'utf-8'
-    }
-}
+# 网站配置
+BING_URL = "https://www.bing.com"
+BING_API_URL = "https://www.bing.com/HPImageArchive.aspx"
 
-def get_headers(site_key='netbian'):
-    base_headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+def get_headers() -> Dict[str, str]:
+    """获取请求头"""
+    return {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
     }
-    
-    if site_key == 'toopic':
-        base_headers.update({
-            'Host': 'www.toopic.cn',
-            'Referer': SITES[site_key]['referer']
-        })
-    elif site_key == '3gbizhi':
-        base_headers.update({
-            'Host': 'desk.3gbizhi.com',
-            'Referer': SITES[site_key]['referer']
-        })
-    
-    return base_headers
 
-def fetch_page_content(url, site_key='netbian'):
-    headers = get_headers(site_key)
-    site_config = SITES[site_key]
+def create_session() -> requests.Session:
+    """创建一个带有重试机制的会话"""
+    session = requests.Session()
+    session.headers.update(get_headers())
     
-    try:
-        session = requests.Session()
-        print(f"访问页面: {url}")
-        response = session.get(url, headers=headers, timeout=10, verify=False)
-        response.encoding = site_config['encoding']
-        
-        print(f"响应状态码: {response.status_code}")
-        return response.text
-    except Exception as e:
-        print(f"获取页面失败: {e}")
-        return None
+    # 配置重试机制
+    retry_strategy = urllib3.util.Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[500, 502, 503, 504],
+    )
+    adapter = requests.adapters.HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    return session
 
-def extract_image_urls_toopic(page_content):
-    if not page_content:
-        return []
-    
+def fetch_image_urls() -> List[str]:
+    """获取必应壁纸URL列表"""
     try:
-        soup = BeautifulSoup(page_content, 'html.parser')
-        image_urls = []
+        session = create_session()
+        image_urls = set()
         
-        # 打印页面结构以进行调试
-        print("\n页面结构预览:")
-        print(soup.prettify()[:1000])
+        # 获取最近8天的壁纸
+        params = {
+            'format': 'js',  # 返回JSON格式
+            'idx': '0',      # 从今天开始
+            'n': '8',        # 获取8张图片
+            'mkt': 'zh-CN'   # 中国区域
+        }
         
-        # 方法1: 查找所有图片容器
-        img_containers = soup.find_all('div', class_='list-pic')
-        for container in img_containers:
-            # 查找图片链接
-            img = container.find('img')
-            if img:
-                src = img.get('data-original') or img.get('src')  # 先尝试 data-original 属性
-                if src:
-                    if not src.startswith('http'):
-                        src = SITES['toopic']['base_url'] + src
-                    image_urls.append(src)
-                    print(f"找到图片URL: {src}")
-        
-        # 方法2: 查找所有图片列表项
-        list_items = soup.find_all('li', class_='item')
-        for item in list_items:
-            img = item.find('img')
-            if img:
-                src = img.get('data-original') or img.get('src')
-                if src:
-                    if not src.startswith('http'):
-                        src = SITES['toopic']['base_url'] + src
-                    if src not in image_urls:
-                        image_urls.append(src)
-                        print(f"找到图片URL: {src}")
+        logger.info("获取必应壁纸列表")
+        try:
+            response = session.get(BING_API_URL, params=params, timeout=10)
+            response.raise_for_status()
             
-            # 查找详情页链接
-            detail_link = item.find('a')
-            if detail_link:
-                href = detail_link.get('href')
-                if href:
-                    if not href.startswith('http'):
-                        href = SITES['toopic']['base_url'] + href
-                    print(f"找到详情页链接: {href}")
-                    # 获取详情页内容
-                    detail_content = fetch_page_content(href, 'toopic')
-                    if detail_content:
-                        detail_soup = BeautifulSoup(detail_content, 'html.parser')
-                        # 查找高清图片下载链接
-                        download_link = detail_soup.find('a', class_='download-btn')
-                        if download_link:
-                            download_href = download_link.get('href')
-                            if download_href:
-                                if not download_href.startswith('http'):
-                                    download_href = SITES['toopic']['base_url'] + download_href
-                                if download_href not in image_urls:
-                                    image_urls.append(download_href)
-                                    print(f"找到高清图片下载链接: {download_href}")
+            data = response.json()
+            if 'images' in data:
+                images = data['images']
+                logger.info(f"找到 {len(images)} 个壁纸")
+                
+                # 随机打乱图片顺序
+                random.shuffle(images)
+                
+                for image in images:
+                    try:
+                        # 获取原图URL
+                        if 'url' in image:
+                            # 构建UHD图片URL
+                            image_url = f"{BING_URL}{image['url'].replace('1920x1080', 'UHD')}"
+                            image_urls.add(image_url)
+                            logger.info(f"找到原图: {image_url}")
+                        
+                        if len(image_urls) >= 3:
+                            break
+                            
+                    except Exception as e:
+                        logger.error(f"处理图片项失败: {str(e)}")
+                        continue
+            
+        except Exception as e:
+            logger.error(f"获取壁纸列表失败: {str(e)}")
+            if 'response' in locals():
+                logger.debug(f"响应内容: {response.text[:500]}")
         
-        # 方法3: 查找所有图片标签
-        all_images = soup.find_all('img')
-        for img in all_images:
-            src = img.get('data-original') or img.get('src')
-            if src and any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                if not src.startswith('http'):
-                    src = SITES['toopic']['base_url'] + src
-                if src not in image_urls:
-                    image_urls.append(src)
-                    print(f"找到图片URL: {src}")
+        logger.info(f"总共找到 {len(image_urls)} 个图片")
+        return list(image_urls)
         
-        print(f"\n总共找到 {len(image_urls)} 张图片")
-        return image_urls
     except Exception as e:
-        print(f"解析页面失败: {e}")
-        print("错误详情:", str(e))
+        logger.error(f"获取图片URL失败: {str(e)}")
         return []
 
-def extract_image_urls_3gbizhi(page_content):
-    if not page_content:
-        return []
+def validate_image(image: Image.Image) -> bool:
+    """验证图片是否满足要求"""
+    min_width = 1920
+    min_height = 1080
+    min_ratio = 1.5
+    max_ratio = 2.5
+    min_size_mb = 0.2
     
     try:
-        soup = BeautifulSoup(page_content, 'html.parser')
-        image_urls = []
+        # 检查图片模式
+        if image.mode not in ['RGB', 'RGBA']:
+            logger.info(f"不支持的图片模式: {image.mode}")
+            image = image.convert('RGB')
         
-        # 打印页面结构以进行调试
-        print("\n页面结构预览:")
-        print(soup.prettify()[:1000])
+        width, height = image.size
+        ratio = width / height
         
-        # 查找所有图片容器
-        img_containers = soup.find_all('div', class_='item')
-        for container in img_containers:
-            # 查找图片链接
-            img = container.find('img')
-            if img:
-                src = img.get('data-original') or img.get('src')  # 先尝试 data-original 属性
-                if src:
-                    if not src.startswith('http'):
-                        src = SITES['3gbizhi']['base_url'] + src
-                    image_urls.append(src)
-                    print(f"找到图片URL: {src}")
+        # 检查分辨率
+        if width < min_width or height < min_height:
+            logger.info(f"图片尺寸不足: {width}x{height}, 需要至少 {min_width}x{min_height}")
+            return False
         
-        # 查找所有图片标签
-        all_images = soup.find_all('img')
-        for img in all_images:
-            src = img.get('data-original') or img.get('src')
-            if src and any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                if not src.startswith('http'):
-                    src = SITES['3gbizhi']['base_url'] + src
-                if src not in image_urls:
-                    image_urls.append(src)
-                    print(f"找到图片URL: {src}")
+        # 检查宽高比
+        if ratio < min_ratio or ratio > max_ratio:
+            logger.info(f"图片宽高比不合适: {ratio:.2f}, 需要在 {min_ratio} 到 {max_ratio} 之间")
+            return False
         
-        print(f"\n总共找到 {len(image_urls)} 张图片")
-        return image_urls
+        # 检查图片质量
+        image_bytes = BytesIO()
+        image.save(image_bytes, format='PNG', optimize=True, quality=95)
+        size_mb = len(image_bytes.getvalue()) / (1024 * 1024)
+        
+        if size_mb < min_size_mb:
+            logger.info(f"图片文件太小: {size_mb:.1f}MB, 需要至少 {min_size_mb}MB")
+            return False
+        
+        # 检查图片是否过度压缩
+        if size_mb > 10:  # 如果文件大于10MB，可能是未压缩的原图
+            logger.info("图片文件过大，尝试优化...")
+            image.save(image_bytes, format='PNG', optimize=True, quality=85)
+            size_mb = len(image_bytes.getvalue()) / (1024 * 1024)
+        
+        logger.info(f"图片验证通过: {width}x{height}, 比例 {ratio:.2f}, 大小 {size_mb:.1f}MB")
+        return True
+        
     except Exception as e:
-        print(f"解析页面失败: {e}")
-        print("错误详情:", str(e))
-        return []
+        logger.error(f"图片验证失败: {str(e)}")
+        return False
 
-def download_and_convert_image(image_url, site_key='netbian'):
-    headers = get_headers(site_key)
-    headers.update({
-        'Accept': 'image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'Sec-Fetch-Dest': 'image',
-        'Sec-Fetch-Mode': 'no-cors',
-    })
+def download_and_convert_image(image_url: str) -> bool:
+    """下载并转换图片，返回是否成功"""
+    headers = get_headers()
     
     try:
-        print(f"正在下载图片: {image_url}")
-        session = requests.Session()
-        response = session.get(image_url, headers=headers, timeout=10, verify=False)
+        session = create_session()
+        logger.info(f"下载图片: {image_url}")
+        response = session.get(image_url, headers=headers, timeout=10)
         response.raise_for_status()
         
-        content_type = response.headers.get('content-type', '')
-        print(f"响应Content-Type: {content_type}")
+        image = Image.open(BytesIO(response.content))
+        logger.info(f"图片尺寸: {image.size}")
         
-        image_data = BytesIO(response.content)
-        image = Image.open(image_data)
+        if not validate_image(image):
+            return False
+            
+        png_path = "img.png"
+        image.save(png_path, "PNG", optimize=True)
         
-        # 修改为固定的文件名和路径
-        png_path = "img.png"  # 直接保存在根目录下
+        if os.path.exists(png_path) and os.path.getsize(png_path) > 0:
+            size_kb = os.path.getsize(png_path) / 1024
+            logger.info(f"图片已成功保存: {png_path} ({size_kb:.1f}KB)")
+            return True
+            
+        return False
         
-        image.save(png_path, "PNG")
-        print(f"图片已成功保存为: {png_path}")
-        
-        if os.path.exists(png_path):
-            print(f"文件创建成功！大小: {os.path.getsize(png_path)} 字节")
     except Exception as e:
-        print(f"处理图片失败: {e}")
-        if 'response' in locals():
-            print(f"响应状态码: {response.status_code}")
-            print(f"响应头: {dict(response.headers)}")
+        logger.error(f"处理图片失败: {str(e)}")
+        return False
 
 def main():
     try:
-        # 添加更多的 toopic.cn 入口页面
-        toopic_urls = [
-            f"{SITES['toopic']['base_url']}/4kbz/",
-            f"{SITES['toopic']['base_url']}/4kbz/4K壁纸/",
-            f"{SITES['toopic']['base_url']}/4kbz/自然风景/",
-            f"{SITES['toopic']['base_url']}/4kbz/卡通动漫/",
-            f"{SITES['toopic']['base_url']}/4kbz/index_1.html",  # 添加分页链接
-            f"{SITES['toopic']['base_url']}/4kbz/index_2.html"
-        ]
+        image_urls = fetch_image_urls()
+        if not image_urls:
+            logger.warning("未找到任何图片")
+            return
+            
+        # 随机尝试最多3个图片URL
+        random.shuffle(image_urls)
+        for image_url in image_urls[:3]:
+            if download_and_convert_image(image_url):
+                return
+            time.sleep(2)
         
-        # 添加更多的 3gbizhi.com 入口页面
-        bizhi_urls = [
-            f"{SITES['3gbizhi']['base_url']}/4kmeinv/",
-            f"{SITES['3gbizhi']['base_url']}/4kfengjing/",
-            f"{SITES['3gbizhi']['base_url']}/4kyouxi/",
-            f"{SITES['3gbizhi']['base_url']}/4kdongman/",
-            f"{SITES['3gbizhi']['base_url']}/4kyingshi/",
-            f"{SITES['3gbizhi']['base_url']}/4kmingxing/"
-        ]
+        logger.warning("所有尝试都失败")
         
-        for url in toopic_urls:
-            print(f"\n尝试访问 toopic.cn: {url}")
-            page_content = fetch_page_content(url, 'toopic')
-            
-            if not page_content:
-                print("获取页面内容失败，尝试下一个URL")
-                time.sleep(2)  # 添加延迟
-                continue
-            
-            # 打印页面内容预览以便调试
-            print("\n页面内容预览:")
-            print(page_content[:500])
-                
-            image_urls = extract_image_urls_toopic(page_content)
-            
-            if image_urls:
-                random_image_url = random.choice(image_urls)
-                print(f"随机选择的图片URL: {random_image_url}")
-                download_and_convert_image(random_image_url, 'toopic')
-                break
-            else:
-                print("未找到图片 URL，尝试下一个URL")
-                time.sleep(2)  # 添加延迟
-        else:
-            print("所有URL都尝试失败")
-        
-        for url in bizhi_urls:
-            print(f"\n尝试访问 3gbizhi.com: {url}")
-            page_content = fetch_page_content(url, '3gbizhi')
-            
-            if not page_content:
-                print("获取页面内容失败，尝试下一个URL")
-                time.sleep(2)  # 添加延迟
-                continue
-            
-            # 打印页面内容预览以便调试
-            print("\n页面内容预览:")
-            print(page_content[:500])
-                
-            image_urls = extract_image_urls_3gbizhi(page_content)
-            
-            if image_urls:
-                random_image_url = random.choice(image_urls)
-                print(f"随机选择的图片URL: {random_image_url}")
-                download_and_convert_image(random_image_url, '3gbizhi')
-                break
-            else:
-                print("未找到图片 URL，尝试下一个URL")
-                time.sleep(2)  # 添加延迟
-        else:
-            print("所有URL都尝试失败")
     except Exception as e:
-        print(f"程序执行出错: {e}")
-        print("错误详情:", str(e))
+        logger.error(f"程序执行出错: {str(e)}")
 
 if __name__ == "__main__":
     main()
