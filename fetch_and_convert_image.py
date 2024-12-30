@@ -8,6 +8,7 @@ import urllib3
 from typing import List, Optional, Dict
 import logging
 import json  # 替换 bs4，使用内置的 json 模块
+import datetime
 
 # 配置日志
 logging.basicConfig(
@@ -360,7 +361,29 @@ def get_next_image_url() -> Optional[str]:
 
 def main():
     try:
+        logger.info("=== 开始执行更新任务 ===")
+        logger.info(f"当前时间: {datetime.datetime.now().isoformat()}")
+        
         init_check()
+        
+        # 检查图片池状态
+        if os.path.exists(IMAGE_POOL_FILE):
+            with open(IMAGE_POOL_FILE, 'r') as f:
+                pool_data = json.load(f)
+                logger.info(f"图片池上次更新时间: {datetime.datetime.fromtimestamp(pool_data.get('updated_at', 0))}")
+                logger.info(f"图片池中的图片数量: {len(pool_data.get('urls', []))}")
+        
+        # 检查历史记录状态
+        used_images = get_used_images()
+        logger.info(f"已使用图片数量: {len(used_images)}")
+        
+        # 获取下一个图片
+        image_url = get_next_image_url()
+        if not image_url:
+            logger.error("无法获取新图片")
+            return
+            
+        logger.info(f"选择的图片URL: {image_url}")
         
         # 确保缓存目录存在
         os.makedirs(CACHE_DIR, exist_ok=True)
@@ -371,12 +394,6 @@ def main():
             image_urls = fetch_image_urls()
             if image_urls:
                 save_image_pool(image_urls)
-        
-        # 获取下一个未使用的图片
-        image_url = get_next_image_url()
-        if not image_url:
-            logger.warning("未找到可用的图片")
-            return
         
         try:
             # 下载并处理图片
@@ -401,6 +418,7 @@ def main():
         
     except Exception as e:
         logger.error(f"程序执行出错: {str(e)}")
+        raise  # 抛出异常以便在 Actions 日志中看到
 
 if __name__ == "__main__":
     main()
