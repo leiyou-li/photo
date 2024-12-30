@@ -57,7 +57,11 @@ jobs:
       run: |
         echo "Starting image fetcher..."
         python -u fetch_and_convert_image.py
-        echo "Image fetcher completed"
+        if [ $? -ne 0 ]; then
+          echo "Image fetcher failed"
+          exit 1
+        fi
+        echo "Image fetcher completed successfully"
         
     - name: Check files before commit
       run: |
