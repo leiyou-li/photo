@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
     
     steps:
     - name: Checkout repository
@@ -17,6 +20,11 @@ jobs:
       with:
         persist-credentials: false
         fetch-depth: 0
+        
+    - name: Set timezone
+      run: |
+        sudo timedatectl set-timezone Asia/Shanghai
+        date
         
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -38,10 +46,17 @@ jobs:
         echo "Pip packages:"
         pip list
         
+    - name: Check last run
+      run: |
+        if [ -f "last_run.txt" ]; then
+          echo "Last run time: $(cat last_run.txt)"
+        fi
+        date "+%Y-%m-%d %H:%M:%S" > last_run.txt
+        
     - name: Run image fetcher
       run: |
         echo "Starting image fetcher..."
-        python -u fetch_and_convert_image.py  # 添加 -u 参数实时输出日志
+        python -u fetch_and_convert_image.py
         echo "Image fetcher completed"
         
     - name: Check files before commit
@@ -55,6 +70,12 @@ jobs:
         echo "History file size:"
         ls -l used_images.txt || echo "used_images.txt not found"
         
+    - name: Check file permissions
+      run: |
+        touch img.jpg used_images.txt image_pool.json last_run.txt
+        chmod 666 img.jpg used_images.txt image_pool.json last_run.txt
+        ls -la
+        
     - name: Commit and push if changed
       run: |
         echo "Configuring git..."
@@ -63,7 +84,7 @@ jobs:
         git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
         
         echo "Adding files..."
-        git add img.jpg used_images.txt image_pool.json
+        git add img.jpg used_images.txt image_pool.json last_run.txt
         
         echo "Committing changes..."
         if git diff --staged --quiet; then
