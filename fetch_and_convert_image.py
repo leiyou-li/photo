@@ -330,39 +330,27 @@ def get_next_image_url() -> Optional[str]:
         image_urls = load_image_pool()
         used_images = get_used_images()
         
-        logger.info(f"图片池中共有 {len(image_urls)} 张图片")
-        logger.info(f"已使用过 {len(used_images)} 张图片")
-        
-        if not image_urls:
-            logger.warning("图片池为空，尝试获取新图片")
+        # 如果图片池为空或所有图片都已使用，获取新图片
+        if not image_urls or all(url in used_images for url in image_urls):
+            logger.info("获取新的图片列表")
             new_urls = fetch_image_urls()
             if new_urls:
                 save_image_pool(new_urls)
                 image_urls = new_urls
-            else:
-                return None
+                # 清空历史记录
+                open(HISTORY_FILE, 'w').close()
+                used_images = set()
         
         # 找出未使用的图片
         available_urls = [url for url in image_urls if url not in used_images]
-        logger.info(f"可用的未使用图片数量: {len(available_urls)}")
         
-        if not available_urls:
-            logger.info("所有图片都已使用过，获取新图片")
-            new_urls = fetch_image_urls()
-            if new_urls:
-                save_image_pool(new_urls)
-                # 清空历史记录
-                open(HISTORY_FILE, 'w').close()
-                logger.info("已更新图片池并清空历史记录")
-                return random.choice(new_urls)
-            else:
-                logger.warning("获取新图片失败")
-                return None
-        
-        # 随机选择一个未使用的图片
-        selected_url = random.choice(available_urls)
-        logger.info(f"选择了新图片: {selected_url}")
-        return selected_url
+        if available_urls:
+            # 随机选择一个未使用的图片
+            selected_url = random.choice(available_urls)
+            logger.info(f"选择了新图片: {selected_url}")
+            return selected_url
+            
+        return None
         
     except Exception as e:
         logger.error(f"获取下一个图片失败: {str(e)}")
@@ -371,46 +359,32 @@ def get_next_image_url() -> Optional[str]:
 def main():
     try:
         logger.info("=== 开始执行更新任务 ===")
-        logger.info(f"当前时间: {datetime.datetime.now().isoformat()}")
         
-        init_check()
+        # 确保缓存目录存在
+        os.makedirs(CACHE_DIR, exist_ok=True)
         
-        # 强制每次运行都更新图片
+        # 获取新图片
         image_url = get_next_image_url()
         if not image_url:
-            logger.error("无法获取新图片")
-            return False  # 返回 False 表示更新失败
-            
-        logger.info(f"选择的图片URL: {image_url}")
+            logger.warning("未找到可用的图片")
+            return
         
-        try:
-            # 下载并处理图片
-            session = create_session()
-            response = session.get(image_url, timeout=10)
-            response.raise_for_status()
-            
-            image = Image.open(BytesIO(response.content))
-            processed_image = validate_and_process_image(image)
-            
-            if processed_image:
-                if save_optimized_image(processed_image, "img.jpg"):
-                    # 只有成功保存后才记录使用记录
-                    add_used_image(image_url)
-                    logger.info("成功更新壁纸")
-                    return True  # 返回 True 表示更新成功
-                    
-        except Exception as e:
-            logger.error(f"处理图片失败: {str(e)}")
+        # 下载并处理图片
+        session = create_session()
+        response = session.get(image_url, timeout=10)
+        response.raise_for_status()
         
-        logger.warning("更新壁纸失败")
-        return False
+        image = Image.open(BytesIO(response.content))
+        processed_image = validate_and_process_image(image)
         
+        if processed_image and save_optimized_image(processed_image, "img.jpg"):
+            add_used_image(image_url)
+            logger.info("成功更新壁纸")
+        else:
+            logger.warning("处理或保存图片失败")
+            
     except Exception as e:
         logger.error(f"程序执行出错: {str(e)}")
-        raise  # 抛出异常以便在 Actions 日志中看到
-        
+
 if __name__ == "__main__":
-    success = main()
-    # 如果更新失败，使用非零退出码
-    if not success:
-        sys.exit(1)
+    main()
