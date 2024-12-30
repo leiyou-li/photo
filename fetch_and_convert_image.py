@@ -9,6 +9,7 @@ from typing import List, Optional, Dict
 import logging
 import json  # 替换 bs4，使用内置的 json 模块
 import datetime
+import sys
 
 # 配置日志
 logging.basicConfig(
@@ -329,16 +330,24 @@ def get_next_image_url() -> Optional[str]:
         image_urls = load_image_pool()
         used_images = get_used_images()
         
+        logger.info(f"图片池中共有 {len(image_urls)} 张图片")
+        logger.info(f"已使用过 {len(used_images)} 张图片")
+        
         if not image_urls:
-            logger.warning("图片池为空")
-            return None
-            
+            logger.warning("图片池为空，尝试获取新图片")
+            new_urls = fetch_image_urls()
+            if new_urls:
+                save_image_pool(new_urls)
+                image_urls = new_urls
+            else:
+                return None
+        
         # 找出未使用的图片
         available_urls = [url for url in image_urls if url not in used_images]
+        logger.info(f"可用的未使用图片数量: {len(available_urls)}")
         
         if not available_urls:
-            logger.info("所有图片都已使用过，准备更新图片池")
-            # 强制更新图片池
+            logger.info("所有图片都已使用过，获取新图片")
             new_urls = fetch_image_urls()
             if new_urls:
                 save_image_pool(new_urls)
@@ -366,34 +375,13 @@ def main():
         
         init_check()
         
-        # 检查图片池状态
-        if os.path.exists(IMAGE_POOL_FILE):
-            with open(IMAGE_POOL_FILE, 'r') as f:
-                pool_data = json.load(f)
-                logger.info(f"图片池上次更新时间: {datetime.datetime.fromtimestamp(pool_data.get('updated_at', 0))}")
-                logger.info(f"图片池中的图片数量: {len(pool_data.get('urls', []))}")
-        
-        # 检查历史记录状态
-        used_images = get_used_images()
-        logger.info(f"已使用图片数量: {len(used_images)}")
-        
-        # 获取下一个图片
+        # 强制每次运行都更新图片
         image_url = get_next_image_url()
         if not image_url:
             logger.error("无法获取新图片")
-            return
+            return False  # 返回 False 表示更新失败
             
         logger.info(f"选择的图片URL: {image_url}")
-        
-        # 确保缓存目录存在
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        
-        # 检查是否需要更新图片池
-        if should_update_pool():
-            logger.info("开始更新图片池")
-            image_urls = fetch_image_urls()
-            if image_urls:
-                save_image_pool(image_urls)
         
         try:
             # 下载并处理图片
@@ -409,16 +397,20 @@ def main():
                     # 只有成功保存后才记录使用记录
                     add_used_image(image_url)
                     logger.info("成功更新壁纸")
-                    return
+                    return True  # 返回 True 表示更新成功
                     
         except Exception as e:
             logger.error(f"处理图片失败: {str(e)}")
         
         logger.warning("更新壁纸失败")
+        return False
         
     except Exception as e:
         logger.error(f"程序执行出错: {str(e)}")
         raise  # 抛出异常以便在 Actions 日志中看到
-
+        
 if __name__ == "__main__":
-    main()
+    success = main()
+    # 如果更新失败，使用非零退出码
+    if not success:
+        sys.exit(1)
