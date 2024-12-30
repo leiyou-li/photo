@@ -16,6 +16,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         persist-credentials: false
+        fetch-depth: 0
         
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -27,14 +28,48 @@ jobs:
         python -m pip install --upgrade pip
         pip install requests Pillow urllib3
         
+    - name: Check environment
+      run: |
+        echo "Current directory: $(pwd)"
+        echo "Files in directory:"
+        ls -la
+        echo "Python version:"
+        python --version
+        echo "Pip packages:"
+        pip list
+        
     - name: Run image fetcher
-      run: python fetch_and_convert_image.py
+      run: |
+        echo "Starting image fetcher..."
+        python -u fetch_and_convert_image.py  # 添加 -u 参数实时输出日志
+        echo "Image fetcher completed"
+        
+    - name: Check files before commit
+      run: |
+        echo "Files to be committed:"
+        git status
+        echo "Image file size:"
+        ls -l img.jpg || echo "img.jpg not found"
+        echo "Pool file size:"
+        ls -l image_pool.json || echo "image_pool.json not found"
+        echo "History file size:"
+        ls -l used_images.txt || echo "used_images.txt not found"
         
     - name: Commit and push if changed
       run: |
+        echo "Configuring git..."
         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
         git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+        
+        echo "Adding files..."
         git add img.jpg used_images.txt image_pool.json
-        git commit -m "Update wallpaper" || exit 0
-        git push origin HEAD:${{ github.ref }}
+        
+        echo "Committing changes..."
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update wallpaper"
+          echo "Pushing changes..."
+          git push origin HEAD:${{ github.ref }}
+        fi
